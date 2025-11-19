@@ -1,22 +1,10 @@
-# whiteboard_client.v5.py
-# -----------------------------------------------------------------------------
-# CLIENT PROGRAM
-# -----------------------------------------------------------------------------
-# This program handles the user interface and sending/receiving data.
-# It consists of two main threads running at the same time:
-# 1. Main Thread (GUI): Handles mouse clicks, drawing, and button presses.
-# 2. Network Thread: Listens for incoming messages from the server.
-# -----------------------------------------------------------------------------
-
 import socket
 import threading
 import tkinter as tk
-from tkinter import simpledialog, colorchooser, messagebox, PanedWindow, Listbox, Entry, Button, Scrollbar
+from tkinter import simpledialog, colorchooser, messagebox, PanedWindow, Listbox, Entry
 
-# --- NETWORK CONFIGURATION ---
-# IMPORTANT: Change this IP to the computer running the server!
-# Use '127.0.0.1' if running on the same computer.
-SERVER_HOST = '127.0.0.1' 
+# CONFIG
+SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 9090
 
 class WhiteboardApp:
@@ -25,361 +13,252 @@ class WhiteboardApp:
         self.client_socket = client_socket
         self.username = username
         
-        # Default settings
         self.current_color = 'black'
-        self.current_tool = 'brush' 
+        self.current_tool = 'brush'
         self.brush_size = 2
         
-        # Variables for shape drawing (click-and-drag)
         self.drag_start_pos = None
+        self.last_pos = None 
         self.temp_shape_id = None 
         
-        # Build the User Interface
         self.setup_gui()
         
-        # Start the Network Thread
-        # daemon=True means this thread dies automatically when the main window closes
         receive_thread = threading.Thread(target=self.receive_messages, daemon=True)
         receive_thread.start()
-        
-        # Handle window closing safely
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_gui(self):
-        """Builds the entire window layout using Tkinter frames."""
-        self.root.title(f"Network Whiteboard - User: {self.username}")
-        self.root.geometry("1100x600")
+        self.root.title(f"Network Whiteboard - {self.username}")
+        self.root.geometry("1000x600")
+        self.root.minsize(800, 500) # Prevent window from getting too small
 
-        # Use a PanedWindow to allow resizing between Canvas and Sidebar
-        self.main_pane = PanedWindow(self.root, orient=tk.HORIZONTAL)
+        # Main container (Split Screen)
+        self.main_pane = PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=5, bg="#999")
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
-        # --- LEFT: THE CANVAS ---
+        # --- LEFT: CANVAS ---
         self.canvas_frame = tk.Frame(self.main_pane, bg='white')
         self.canvas = tk.Canvas(self.canvas_frame, bg='white', cursor="crosshair")
         self.canvas.pack(fill=tk.BOTH, expand=True)
-        self.main_pane.add(self.canvas_frame, width=850)
+        self.main_pane.add(self.canvas_frame, width=750)
 
-        # --- RIGHT: THE SIDEBAR ---
+        # --- RIGHT: SIDEBAR ---
+        # We use a dedicated frame for the sidebar
         self.sidebar = tk.Frame(self.main_pane, width=250, bg='#f0f0f0')
-        self.sidebar.pack_propagate(False) # Force the frame to stay 250px wide
         self.main_pane.add(self.sidebar)
 
-        # --- SIDEBAR SECTION 1: TOOLS ---
-        self.tools_frame = tk.LabelFrame(self.sidebar, text="Drawing Tools", bg='#f0f0f0', padx=5, pady=5)
-        self.tools_frame.pack(pady=5, fill=tk.X)
+        # ==============================================================
+        # LAYOUT STRATEGY: THE SANDWICH
+        # 1. Pack fixed-height items to the TOP
+        # 2. Pack the input field to the BOTTOM (so it's always visible)
+        # 3. Pack the Chat History in the remaining space (EXPAND)
+        # ==============================================================
+
+        # --- 1. TOP SECTIONS (Tools, Properties, Actions, User List) ---
         
-        # Helper to create grid of buttons
-        tools = [
-            ("✏️ Brush", "brush"), ("📏 Line", "line"),
-            ("⬜ Rect", "rect"), ("⭕ Circle", "circle"),
-            ("🔺 Tri", "tri"), ("🧼 Eraser", "eraser")
-        ]
+        # Tools
+        self.tools_frame = tk.LabelFrame(self.sidebar, text="Tools", bg='#f0f0f0', padx=2, pady=2)
+        self.tools_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         
-        # Create a grid of buttons
-        row = 0
-        col = 0
+        tools = [("✏️", "brush"), ("📏", "line"), ("⬜", "rect"), 
+                 ("⭕", "circle"), ("🔺", "tri"), ("🧼", "eraser")]
+        c = 0
         for text, value in tools:
-            # We use a lambda to capture the specific 'value' for each button
-            btn = tk.Button(self.tools_frame, text=text, width=8,
-                            command=lambda v=value: self.select_tool(v))
-            btn.grid(row=row, column=col, padx=2, pady=2)
-            col += 1
-            if col > 1: # Wrap to next row every 2 buttons
-                col = 0
-                row += 1
+            tk.Button(self.tools_frame, text=text, width=4, command=lambda v=value: self.select_tool(v)).grid(row=0, column=c, padx=1)
+            c += 1
 
-        # --- SIDEBAR SECTION 2: PROPERTIES ---
-        self.props_frame = tk.LabelFrame(self.sidebar, text="Properties", bg='#f0f0f0', padx=5, pady=5)
-        self.props_frame.pack(pady=5, fill=tk.X)
-
-        # Size Slider
-        tk.Label(self.props_frame, text="Size:", bg='#f0f0f0').pack(anchor=tk.W)
-        self.size_slider = tk.Scale(self.props_frame, from_=1, to=20, orient=tk.HORIZONTAL, bg='#f0f0f0')
+        # Properties (Size & Color)
+        self.props_frame = tk.LabelFrame(self.sidebar, text="Properties", bg='#f0f0f0', padx=2, pady=2)
+        self.props_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+        
+        self.size_slider = tk.Scale(self.props_frame, from_=1, to=20, orient=tk.HORIZONTAL, bg='#f0f0f0', label="Size")
         self.size_slider.set(2)
         self.size_slider.pack(fill=tk.X)
-
-        # Color Palette
-        tk.Label(self.props_frame, text="Colors:", bg='#f0f0f0').pack(anchor=tk.W, pady=(5,0))
-        self.palette_frame = tk.Frame(self.props_frame, bg='#f0f0f0')
-        self.palette_frame.pack()
         
-        colors = ['black', 'red', 'green', 'blue', 'orange', 'purple']
-        for color in colors:
-            btn = tk.Button(self.palette_frame, bg=color, width=2,
-                            command=lambda c=color: self.set_color(c))
-            btn.pack(side=tk.LEFT, padx=2)
-        
-        # Custom Color Picker
-        tk.Button(self.props_frame, text="Custom Color...", command=self.choose_color).pack(fill=tk.X, pady=5)
+        btn_row = tk.Frame(self.props_frame, bg='#f0f0f0')
+        btn_row.pack(fill=tk.X, pady=2)
+        colors = ['black', 'red', 'green', 'blue', 'orange']
+        for col in colors:
+            tk.Button(btn_row, bg=col, width=2, command=lambda c=col: self.set_color(c)).pack(side=tk.LEFT, padx=1)
+        tk.Button(btn_row, text="🎨", command=self.choose_color).pack(side=tk.LEFT, padx=1)
 
-        # --- SIDEBAR SECTION 3: ACTIONS ---
-        self.action_frame = tk.LabelFrame(self.sidebar, text="Actions", bg='#f0f0f0', padx=5, pady=5)
-        self.action_frame.pack(pady=5, fill=tk.X)
-        tk.Button(self.action_frame, text="🗑️ Clear Canvas", command=self.clear_canvas, bg="#ffcccc").pack(fill=tk.X)
-
-        # --- SIDEBAR SECTION 4: USERS & CHAT ---
-        self.chat_container = tk.Frame(self.sidebar, bg='#f0f0f0')
-        self.chat_container.pack(pady=5, fill=tk.BOTH, expand=True)
+        # Clear Button
+        tk.Button(self.sidebar, text="🗑️ Clear All", command=self.clear_canvas, bg="#ffcccc").pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
 
         # User List
-        tk.Label(self.chat_container, text="Online Users:", bg='#f0f0f0').pack(anchor=tk.W)
-        self.user_listbox = Listbox(self.chat_container, height=4, bg='white')
-        self.user_listbox.pack(fill=tk.X)
+        tk.Label(self.sidebar, text="Online Users:", bg='#f0f0f0', font=("Arial", 8, "bold")).pack(side=tk.TOP, anchor=tk.W, padx=5)
+        self.user_listbox = Listbox(self.sidebar, height=3, bg='white', font=("Arial", 8))
+        self.user_listbox.pack(side=tk.TOP, fill=tk.X, padx=5)
 
-        # Chat History
-        tk.Label(self.chat_container, text="Chat:", bg='#f0f0f0').pack(anchor=tk.W)
-        self.chat_listbox = Listbox(self.chat_container, bg='white')
-        self.chat_listbox.pack(fill=tk.BOTH, expand=True)
-
-        # Chat Entry
-        self.chat_entry = Entry(self.chat_container)
-        self.chat_entry.pack(fill=tk.X, pady=2)
+        # --- 2. BOTTOM SECTION (Chat Entry) ---
+        # IMPORTANT: We pack this to the BOTTOM *before* the chat history.
+        # This forces Tkinter to reserve space for it at the bottom edge.
+        self.chat_entry = Entry(self.sidebar, font=("Arial", 10))
+        self.chat_entry.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
         self.chat_entry.bind("<Return>", self.send_chat_message)
-            
-        # --- MOUSE BINDINGS ---
-        # These connect mouse actions to our functions
-        self.canvas.bind('<Button-1>', self.on_press)      # Click
-        self.canvas.bind('<B1-Motion>', self.on_drag)      # Drag
-        self.canvas.bind('<ButtonRelease-1>', self.on_release) # Release
-
-    # -------------------------------------------------------------------------
-    # MOUSE EVENT HANDLERS
-    # -------------------------------------------------------------------------
-    def on_press(self, event):
-        """Triggered when user clicks the mouse button."""
-        self.drag_start_pos = (event.x, event.y)
         
-        # Brush/Eraser start drawing immediately
+        tk.Label(self.sidebar, text="Type Message:", bg='#f0f0f0', font=("Arial", 8)).pack(side=tk.BOTTOM, anchor=tk.W, padx=5)
+
+        # --- 3. MIDDLE SECTION (Chat History) ---
+        # Now we pack the listbox to fill whatever space is LEFT.
+        tk.Label(self.sidebar, text="Chat History:", bg='#f0f0f0', font=("Arial", 8, "bold")).pack(side=tk.TOP, anchor=tk.W, padx=5, pady=(5,0))
+        
+        self.chat_listbox = Listbox(self.sidebar, bg='white', font=("Arial", 9))
+        self.chat_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=2)
+        
+        # Add a scrollbar for chat
+        scrollbar = tk.Scrollbar(self.sidebar)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.chat_listbox.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.chat_listbox.yview)
+
+        # Bindings
+        self.canvas.bind('<Button-1>', self.on_press)
+        self.canvas.bind('<B1-Motion>', self.on_drag)
+        self.canvas.bind('<ButtonRelease-1>', self.on_release)
+
+    # --- MOUSE LOGIC (Smooth Lines) ---
+    def on_press(self, event):
+        self.drag_start_pos = (event.x, event.y)
+        self.last_pos = (event.x, event.y)
         if self.current_tool in ['brush', 'eraser']:
-            self.paint(event)
+            self.paint_segment(event.x, event.y, event.x, event.y)
 
     def on_drag(self, event):
-        """Triggered when user moves mouse while holding button."""
-        if not self.drag_start_pos:
-            return
-
         if self.current_tool in ['brush', 'eraser']:
-            self.paint(event) # Continuous drawing
+            x1, y1 = self.last_pos
+            x2, y2 = event.x, event.y
+            self.paint_segment(x1, y1, x2, y2)
+            self.last_pos = (x2, y2)
         else:
-            # Shape Preview Logic
-            # We draw a temporary shape that gets deleted and redrawn as the mouse moves
-            if self.temp_shape_id:
-                self.canvas.delete(self.temp_shape_id)
-            
+            if self.temp_shape_id: self.canvas.delete(self.temp_shape_id)
             x1, y1 = self.drag_start_pos
-            x2, y2 = (event.x, event.y)
-            color = self.current_color
-            size = self.size_slider.get()
-            
-            # Determine which shape to preview
+            x2, y2 = event.x, event.y
+            c, s = self.current_color, self.size_slider.get()
             if self.current_tool == 'line':
-                self.temp_shape_id = self.canvas.create_line(x1, y1, x2, y2, fill=color, width=size)
+                self.temp_shape_id = self.canvas.create_line(x1, y1, x2, y2, fill=c, width=s)
             elif self.current_tool == 'rect':
-                self.temp_shape_id = self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=size)
+                self.temp_shape_id = self.canvas.create_rectangle(x1, y1, x2, y2, outline=c, width=s)
             elif self.current_tool == 'circle':
-                self.temp_shape_id = self.canvas.create_oval(x1, y1, x2, y2, outline=color, width=size)
+                self.temp_shape_id = self.canvas.create_oval(x1, y1, x2, y2, outline=c, width=s)
             elif self.current_tool == 'tri':
-                # Triangle calculation
-                x3 = x1 + (x2 - x1) / 2 # Top point x
-                self.temp_shape_id = self.canvas.create_polygon(x1, y2, x2, y2, x3, y1, outline=color, width=size, fill='')
+                x3 = x1 + (x2 - x1) / 2
+                self.temp_shape_id = self.canvas.create_polygon(x1, y2, x2, y2, x3, y1, outline=c, width=s, fill='')
 
     def on_release(self, event):
-        """Triggered when user releases the mouse button."""
-        if not self.drag_start_pos:
-            return
-
-        # Delete the preview shape
+        self.last_pos = None
         if self.temp_shape_id:
             self.canvas.delete(self.temp_shape_id)
             self.temp_shape_id = None
-            
-        # Finalize coordinates
-        x1, y1 = self.drag_start_pos
-        x2, y2 = event.x, event.y
-        color = self.current_color
-        size = self.size_slider.get()
         
-        message = ""
-        
-        # 1. Draw locally (so we see it instantly)
-        # 2. Construct the protocol message to send to server
-        if self.current_tool == 'line':
-            self.canvas.create_line(x1, y1, x2, y2, fill=color, width=size)
-            message = f"LINE,{x1},{y1},{x2},{y2},{color},{size}\n"
-        elif self.current_tool == 'rect':
-            self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=size)
-            message = f"RECT,{x1},{y1},{x2},{y2},{color},{size}\n"
-        elif self.current_tool == 'circle':
-            self.canvas.create_oval(x1, y1, x2, y2, outline=color, width=size)
-            message = f"CIRCLE,{x1},{y1},{x2},{y2},{color},{size}\n"
-        elif self.current_tool == 'tri':
-            x3 = x1 + (x2 - x1) / 2
-            self.canvas.create_polygon(x1, y2, x2, y2, x3, y1, outline=color, width=size, fill='')
-            # Triangle protocol sends 3 coordinates
-            message = f"TRI,{x1},{y2},{x2},{y2},{x3},{y1},{color},{size}\n"
-        
-        if message:
-            self.send_to_server(message)
-            
-        self.drag_start_pos = None
+        if self.current_tool not in ['brush', 'eraser'] and self.drag_start_pos:
+            x1, y1 = self.drag_start_pos
+            x2, y2 = event.x, event.y
+            c, s = self.current_color, self.size_slider.get()
+            msg = ""
+            if self.current_tool == 'line':
+                self.canvas.create_line(x1, y1, x2, y2, fill=c, width=s)
+                msg = f"LINE,{x1},{y1},{x2},{y2},{c},{s}\n"
+            elif self.current_tool == 'rect':
+                self.canvas.create_rectangle(x1, y1, x2, y2, outline=c, width=s)
+                msg = f"RECT,{x1},{y1},{x2},{y2},{c},{s}\n"
+            elif self.current_tool == 'circle':
+                self.canvas.create_oval(x1, y1, x2, y2, outline=c, width=s)
+                msg = f"CIRCLE,{x1},{y1},{x2},{y2},{c},{s}\n"
+            elif self.current_tool == 'tri':
+                x3 = x1 + (x2 - x1) / 2
+                self.canvas.create_polygon(x1, y2, x2, y2, x3, y1, outline=c, width=s, fill='')
+                msg = f"TRI,{x1},{y2},{x2},{y2},{x3},{y1},{c},{s}\n"
+            if msg: self.send_to_server(msg)
 
-    def paint(self, event):
-        """Handles continuous drawing for Brush and Eraser."""
-        x, y = event.x, event.y
+    def paint_segment(self, x1, y1, x2, y2):
         size = self.size_slider.get()
         color = self.current_color if self.current_tool == 'brush' else 'white'
-        
-        x1, y1 = (x - size), (y - size)
-        x2, y2 = (x + size), (y + size)
-        self.canvas.create_oval(x1, y1, x2, y2, fill=color, outline=color)
-        
-        message = f"DRAW,{x},{y},{color},{size}\n"
+        self.canvas.create_line(x1, y1, x2, y2, fill=color, width=size, capstyle=tk.ROUND, smooth=True)
+        message = f"DRAW,{x1},{y1},{x2},{y2},{color},{size}\n"
         self.send_to_server(message)
 
-    # -------------------------------------------------------------------------
-    # HELPER FUNCTIONS
-    # -------------------------------------------------------------------------
+    # --- HELPERS ---
     def clear_canvas(self):
         self.canvas.delete("all")
         self.send_to_server("CLEAR\n")
-
-    def set_color(self, new_color):
-        self.current_color = new_color
-
+    def set_color(self, c): self.current_color = c
+    def select_tool(self, t): self.current_tool = t
     def choose_color(self):
-        color = colorchooser.askcolor()[1]
-        if color:
-            self.current_color = color
-
-    def select_tool(self, tool_name):
-        self.current_tool = tool_name
-        print(f"Tool selected: {self.current_tool}")
-
-    def send_chat_message(self, event=None):
-        message_text = self.chat_entry.get()
-        if message_text:
-            self.send_to_server(f"CHAT,{message_text}\n")
+        c = colorchooser.askcolor()[1]
+        if c: self.current_color = c
+    def send_chat_message(self, e=None):
+        txt = self.chat_entry.get()
+        if txt:
+            self.send_to_server(f"CHAT,{txt}\n")
             self.chat_entry.delete(0, tk.END)
-            self.display_chat_message(self.username, message_text)
-
+            self.display_chat_message("Me", txt)
     def display_chat_message(self, user, text):
         self.chat_listbox.insert(tk.END, f"{user}: {text}")
         self.chat_listbox.yview(tk.END)
+    def send_to_server(self, msg):
+        try: self.client_socket.send(msg.encode('utf-8'))
+        except: pass
 
-    # -------------------------------------------------------------------------
-    # NETWORK LOGIC
-    # -------------------------------------------------------------------------
-    def send_to_server(self, message):
-        try:
-            self.client_socket.send(message.encode('utf-8'))
-        except Exception as e:
-            print(f"Error sending data: {e}")
-
+    # --- NETWORK ---
     def receive_messages(self):
-        """
-        Listens for messages from the server.
-        This runs in the background thread.
-        """
         buffer = ""
         while True:
             try:
                 data = self.client_socket.recv(1024).decode('utf-8')
-                if not data:
-                    break
+                if not data: break
                 buffer += data
-                
                 while '\n' in buffer:
-                    message, buffer = buffer.split('\n', 1)
-                    parts = message.split(',')
-                    command = parts[0]
+                    msg, buffer = buffer.split('\n', 1)
+                    parts = msg.split(',')
+                    cmd = parts[0]
                     
-                    # PROTOCOL PARSER
-                    if command == 'DRAW':
-                        x, y, color, size = int(parts[1]), int(parts[2]), parts[3], int(parts[4])
-                        x1, y1 = (x - size), (y - size)
-                        x2, y2 = (x + size), (y + size)
-                        self.canvas.create_oval(x1, y1, x2, y2, fill=color, outline=color)
-                    
-                    elif command == 'LINE':
-                        x1,y1,x2,y2 = int(parts[1]),int(parts[2]),int(parts[3]),int(parts[4])
-                        color, size = parts[5], int(parts[6])
-                        self.canvas.create_line(x1, y1, x2, y2, fill=color, width=size)
-
-                    elif command == 'RECT':
-                        x1,y1,x2,y2 = int(parts[1]),int(parts[2]),int(parts[3]),int(parts[4])
-                        color, size = parts[5], int(parts[6])
-                        self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=size)
-                        
-                    elif command == 'CIRCLE':
-                        x1,y1,x2,y2 = int(parts[1]),int(parts[2]),int(parts[3]),int(parts[4])
-                        color, size = parts[5], int(parts[6])
-                        self.canvas.create_oval(x1, y1, x2, y2, outline=color, width=size)
-
-                    elif command == 'TRI':
-                        # Triangle receives 3 coordinate pairs
-                        x1,y1,x2,y2,x3,y3 = int(parts[1]),int(parts[2]),int(parts[3]),int(parts[4]),int(parts[5]),int(parts[6])
-                        color, size = parts[7], int(parts[8])
-                        self.canvas.create_polygon(x1, y1, x2, y2, x3, y3, outline=color, width=size, fill='')
-
-                    elif command == 'CLEAR':
-                        self.canvas.delete("all")
-                    
-                    elif command == 'USER_LIST':
-                        self.update_user_list(parts[1:])
-                    
-                    elif command == 'CHAT':
-                        user = parts[1]
-                        text = ','.join(parts[2:])
-                        self.display_chat_message(user, text)
-                        
-            except Exception as e:
-                print(f"Connection error: {e}")
-                break
+                    if cmd == 'DRAW':
+                        x1, y1, x2, y2 = int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+                        c, s = parts[5], int(parts[6])
+                        self.canvas.create_line(x1, y1, x2, y2, fill=c, width=s, capstyle=tk.ROUND)
+                    elif cmd == 'LINE':
+                        self.canvas.create_line(int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), fill=parts[5], width=int(parts[6]))
+                    elif cmd == 'RECT':
+                        self.canvas.create_rectangle(int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), outline=parts[5], width=int(parts[6]))
+                    elif cmd == 'CIRCLE':
+                        self.canvas.create_oval(int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), outline=parts[5], width=int(parts[6]))
+                    elif cmd == 'TRI':
+                        self.canvas.create_polygon(int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), int(parts[5]), int(parts[6]), outline=parts[7], width=int(parts[8]), fill='')
+                    elif cmd == 'CLEAR': self.canvas.delete("all")
+                    elif cmd == 'USER_LIST': self.update_user_list(parts[1:])
+                    elif cmd == 'CHAT': 
+                        if parts[1] != self.username: # Don't double post own messages
+                            self.display_chat_message(parts[1], ','.join(parts[2:]))
+            except: break
         
-        messagebox.showinfo("Disconnected", "Lost connection to the server.")
+        messagebox.showinfo("Error", "Disconnected from server")
         self.client_socket.close()
         self.root.destroy()
 
     def update_user_list(self, users):
         self.user_listbox.delete(0, tk.END)
-        for user in users:
-            self.user_listbox.insert(tk.END, user)
-
+        for u in users: self.user_listbox.insert(tk.END, u)
+    
     def on_closing(self):
-        if messagebox.askokcancel("Quit", "Do you want to quit?"):
-            self.client_socket.close()
-            self.root.destroy()
+        self.client_socket.close()
+        self.root.destroy()
 
-# -------------------------------------------------------------------------
-# MAIN ENTRY POINT
-# -------------------------------------------------------------------------
 def main():
     root = tk.Tk()
     root.withdraw()
-
-    # 1. Get Username
-    username = simpledialog.askstring("Username", "Please enter your username:", parent=root)
-    if not username:
-        root.destroy()
-        return
-
-    # 2. Connect to Server
+    u = simpledialog.askstring("Username", "Enter Name:", parent=root)
+    if not u: return
     try:
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((SERVER_HOST, SERVER_PORT))
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((SERVER_HOST, SERVER_PORT))
+        s.send(f"JOIN,{u}\n".encode('utf-8'))
+        root.deiconify()
+        WhiteboardApp(root, s, u)
+        root.mainloop()
     except Exception as e:
-        messagebox.showerror("Connection Error", f"Failed to connect to server at {SERVER_HOST}:{SERVER_PORT}\n{e}")
-        root.destroy()
-        return
-
-    # 3. Send JOIN
-    client_socket.send(f"JOIN,{username}\n".encode('utf-8'))
-
-    # 4. Launch App
-    root.deiconify()
-    app = WhiteboardApp(root, client_socket, username)
-    root.mainloop()
+        messagebox.showerror("Error", f"Cannot connect: {e}")
 
 if __name__ == "__main__":
     main()
