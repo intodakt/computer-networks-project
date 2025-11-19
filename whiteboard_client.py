@@ -1,9 +1,21 @@
+# -----------------------------------------------------------------------------
+# CLIENT PROGRAM (whiteboard_client.py)
+# -----------------------------------------------------------------------------
+# TEAM MEMBER RESPONSIBILITY: [Member Name 2] & [Member Name 4]
+#
+# DESCRIPTION:
+# This program handles the GUI (Tkinter) and Network logic.
+# It separates networking into a background thread to prevent the GUI from freezing.
+# It implements "Interpolation" for smooth drawing lines.
+# -----------------------------------------------------------------------------
+
 import socket
 import threading
 import tkinter as tk
 from tkinter import simpledialog, colorchooser, messagebox, PanedWindow, Listbox, Entry
 
-# CONFIG
+# --- NETWORK CONFIGURATION ---
+# IMPORTANT: Change this IP to the computer running the server!
 SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 9090
 
@@ -13,26 +25,37 @@ class WhiteboardApp:
         self.client_socket = client_socket
         self.username = username
         
+        # Drawing State
         self.current_color = 'black'
         self.current_tool = 'brush'
         self.brush_size = 2
         
-        self.drag_start_pos = None
+        # "last_pos" is used for Smooth Drawing (connecting A to B)
         self.last_pos = None 
+        self.drag_start_pos = None
         self.temp_shape_id = None 
         
+        # 1. Build the UI
         self.setup_gui()
         
+        # 2. Start Listening for network messages
+        # daemon=True ensures this thread dies when the main window closes
         receive_thread = threading.Thread(target=self.receive_messages, daemon=True)
         receive_thread.start()
+        
+        # 3. Handle window close button
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_gui(self):
+        """
+        Builds the window layout.
+        Uses the 'Sandwich Method' to ensure the Chat Entry is always visible.
+        """
         self.root.title(f"Network Whiteboard - {self.username}")
         self.root.geometry("1000x600")
-        self.root.minsize(800, 500) # Prevent window from getting too small
+        self.root.minsize(800, 500) # Minimum size to prevent UI breaking
 
-        # Main container (Split Screen)
+        # PanedWindow creates a draggable divider between Canvas and Sidebar
         self.main_pane = PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=5, bg="#999")
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
@@ -43,20 +66,15 @@ class WhiteboardApp:
         self.main_pane.add(self.canvas_frame, width=750)
 
         # --- RIGHT: SIDEBAR ---
-        # We use a dedicated frame for the sidebar
         self.sidebar = tk.Frame(self.main_pane, width=250, bg='#f0f0f0')
         self.main_pane.add(self.sidebar)
 
-        # ==============================================================
-        # LAYOUT STRATEGY: THE SANDWICH
-        # 1. Pack fixed-height items to the TOP
-        # 2. Pack the input field to the BOTTOM (so it's always visible)
-        # 3. Pack the Chat History in the remaining space (EXPAND)
-        # ==============================================================
+        # === UI SANDWICH LAYOUT ===
+        # 1. Pack fixed items to TOP
+        # 2. Pack Input Field to BOTTOM
+        # 3. Pack History to FILL the middle
 
-        # --- 1. TOP SECTIONS (Tools, Properties, Actions, User List) ---
-        
-        # Tools
+        # [TOP] Tools Section
         self.tools_frame = tk.LabelFrame(self.sidebar, text="Tools", bg='#f0f0f0', padx=2, pady=2)
         self.tools_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         
@@ -64,10 +82,11 @@ class WhiteboardApp:
                  ("⭕", "circle"), ("🔺", "tri"), ("🧼", "eraser")]
         c = 0
         for text, value in tools:
-            tk.Button(self.tools_frame, text=text, width=4, command=lambda v=value: self.select_tool(v)).grid(row=0, column=c, padx=1)
+            tk.Button(self.tools_frame, text=text, width=4, 
+                      command=lambda v=value: self.select_tool(v)).grid(row=0, column=c, padx=1)
             c += 1
 
-        # Properties (Size & Color)
+        # [TOP] Properties (Size/Color)
         self.props_frame = tk.LabelFrame(self.sidebar, text="Properties", bg='#f0f0f0', padx=2, pady=2)
         self.props_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         
@@ -82,43 +101,37 @@ class WhiteboardApp:
             tk.Button(btn_row, bg=col, width=2, command=lambda c=col: self.set_color(c)).pack(side=tk.LEFT, padx=1)
         tk.Button(btn_row, text="🎨", command=self.choose_color).pack(side=tk.LEFT, padx=1)
 
-        # Clear Button
+        # [TOP] Clear & User List
         tk.Button(self.sidebar, text="🗑️ Clear All", command=self.clear_canvas, bg="#ffcccc").pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-
-        # User List
         tk.Label(self.sidebar, text="Online Users:", bg='#f0f0f0', font=("Arial", 8, "bold")).pack(side=tk.TOP, anchor=tk.W, padx=5)
         self.user_listbox = Listbox(self.sidebar, height=3, bg='white', font=("Arial", 8))
         self.user_listbox.pack(side=tk.TOP, fill=tk.X, padx=5)
 
-        # --- 2. BOTTOM SECTION (Chat Entry) ---
-        # IMPORTANT: We pack this to the BOTTOM *before* the chat history.
-        # This forces Tkinter to reserve space for it at the bottom edge.
+        # [BOTTOM] Chat Entry
+        # We pack this FIRST to the bottom so it stays there.
         self.chat_entry = Entry(self.sidebar, font=("Arial", 10))
         self.chat_entry.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
         self.chat_entry.bind("<Return>", self.send_chat_message)
-        
         tk.Label(self.sidebar, text="Type Message:", bg='#f0f0f0', font=("Arial", 8)).pack(side=tk.BOTTOM, anchor=tk.W, padx=5)
 
-        # --- 3. MIDDLE SECTION (Chat History) ---
-        # Now we pack the listbox to fill whatever space is LEFT.
+        # [MIDDLE] Chat History
+        # This fills whatever space is left between User List and Chat Entry
         tk.Label(self.sidebar, text="Chat History:", bg='#f0f0f0', font=("Arial", 8, "bold")).pack(side=tk.TOP, anchor=tk.W, padx=5, pady=(5,0))
-        
         self.chat_listbox = Listbox(self.sidebar, bg='white', font=("Arial", 9))
         self.chat_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=2)
         
-        # Add a scrollbar for chat
+        # Scrollbar for chat
         scrollbar = tk.Scrollbar(self.sidebar)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
         self.chat_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.chat_listbox.yview)
 
-        # Bindings
+        # Event Bindings
         self.canvas.bind('<Button-1>', self.on_press)
         self.canvas.bind('<B1-Motion>', self.on_drag)
         self.canvas.bind('<ButtonRelease-1>', self.on_release)
 
-    # --- MOUSE LOGIC (Smooth Lines) ---
+    # --- LOGIC: MOUSE & DRAWING ---
     def on_press(self, event):
         self.drag_start_pos = (event.x, event.y)
         self.last_pos = (event.x, event.y)
@@ -126,16 +139,21 @@ class WhiteboardApp:
             self.paint_segment(event.x, event.y, event.x, event.y)
 
     def on_drag(self, event):
+        # Smooth Drawing Logic:
+        # Instead of drawing a dot at event.x/y, we draw a LINE from
+        # the last mouse position to the current one. This fills the gaps.
         if self.current_tool in ['brush', 'eraser']:
             x1, y1 = self.last_pos
             x2, y2 = event.x, event.y
             self.paint_segment(x1, y1, x2, y2)
-            self.last_pos = (x2, y2)
+            self.last_pos = (x2, y2) # Update last position
         else:
+            # Shape Preview Logic (Draws temporary shape)
             if self.temp_shape_id: self.canvas.delete(self.temp_shape_id)
             x1, y1 = self.drag_start_pos
             x2, y2 = event.x, event.y
             c, s = self.current_color, self.size_slider.get()
+            
             if self.current_tool == 'line':
                 self.temp_shape_id = self.canvas.create_line(x1, y1, x2, y2, fill=c, width=s)
             elif self.current_tool == 'rect':
@@ -152,6 +170,7 @@ class WhiteboardApp:
             self.canvas.delete(self.temp_shape_id)
             self.temp_shape_id = None
         
+        # If it was a shape tool, finalize the shape and send to server
         if self.current_tool not in ['brush', 'eraser'] and self.drag_start_pos:
             x1, y1 = self.drag_start_pos
             x2, y2 = event.x, event.y
@@ -173,13 +192,18 @@ class WhiteboardApp:
             if msg: self.send_to_server(msg)
 
     def paint_segment(self, x1, y1, x2, y2):
+        """Draws a line locally and notifies server."""
         size = self.size_slider.get()
         color = self.current_color if self.current_tool == 'brush' else 'white'
+        
+        # 'capstyle=tk.ROUND' makes the line joints look smooth like a brush
         self.canvas.create_line(x1, y1, x2, y2, fill=color, width=size, capstyle=tk.ROUND, smooth=True)
+        
+        # Protocol: DRAW,x1,y1,x2,y2,color,size
         message = f"DRAW,{x1},{y1},{x2},{y2},{color},{size}\n"
         self.send_to_server(message)
 
-    # --- HELPERS ---
+    # --- LOGIC: HELPERS ---
     def clear_canvas(self):
         self.canvas.delete("all")
         self.send_to_server("CLEAR\n")
@@ -201,14 +225,21 @@ class WhiteboardApp:
         try: self.client_socket.send(msg.encode('utf-8'))
         except: pass
 
-    # --- NETWORK ---
+    # --- LOGIC: NETWORKING (Background Thread) ---
     def receive_messages(self):
+        """
+        Listens for incoming messages.
+        Since this is a 'while True' loop, it MUST run in a thread
+        or it would freeze the GUI.
+        """
         buffer = ""
         while True:
             try:
                 data = self.client_socket.recv(1024).decode('utf-8')
                 if not data: break
                 buffer += data
+                
+                # Handle TCP Stream Fragmentation (Process messages one by one)
                 while '\n' in buffer:
                     msg, buffer = buffer.split('\n', 1)
                     parts = msg.split(',')
@@ -229,7 +260,7 @@ class WhiteboardApp:
                     elif cmd == 'CLEAR': self.canvas.delete("all")
                     elif cmd == 'USER_LIST': self.update_user_list(parts[1:])
                     elif cmd == 'CHAT': 
-                        if parts[1] != self.username: # Don't double post own messages
+                        if parts[1] != self.username: 
                             self.display_chat_message(parts[1], ','.join(parts[2:]))
             except: break
         
