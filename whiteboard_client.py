@@ -303,6 +303,7 @@ def modeWindow(mode_var):
 
     tk.Button(win, text = 'Host', command = lambda: [mode_var.set(1), win.destroy()]).pack()
     tk.Button(win, text = 'Join', command =lambda: [mode_var.set(0), win.destroy()]).pack()
+    return win
 
 def main():
     root = tk.Tk()
@@ -316,7 +317,7 @@ def main():
         SERVER_HOST = get_ip_address()
         server_thread = threading.Thread(target=whiteboard_server.start_server, daemon = True)
         server_thread.start()
-
+        print("Server Start %s" % get_ip_address())
 
     else:
         target_ip = simpledialog.askstring("Connect", "Enter Host IP:", parent=root)
