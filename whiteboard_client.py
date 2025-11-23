@@ -12,7 +12,12 @@
 import socket
 import threading
 import tkinter as tk
+import whiteboard_server
+
 from tkinter import simpledialog, colorchooser, messagebox, PanedWindow, Listbox, Entry
+from enum import Enum
+
+
 
 # --- NETWORK CONFIGURATION ---
 # IMPORTANT: Change this IP to the computer running the server!
@@ -267,6 +272,8 @@ class WhiteboardApp:
         messagebox.showinfo("Error", "Disconnected from server")
         self.client_socket.close()
         self.root.destroy()
+    
+    
 
     def update_user_list(self, users):
         self.user_listbox.delete(0, tk.END)
@@ -276,9 +283,46 @@ class WhiteboardApp:
         self.client_socket.close()
         self.root.destroy()
 
+def get_ip_address(): #Use UDP to quickly get the host's ip adress
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect('8.8.8.8', 80)
+            ip_adress = s.getsockname()[0]
+        except Exception:
+            ip_adress = '127.0.0.1'
+        finally:
+            s.close()
+
+        return ip_adress
+
+def modeWindow(mode_var):
+    win = tk.Toplevel()
+    win.title('Choose Mode')
+    message = 'Host or Join?'
+    tk.Label(win, text = message).pack()
+
+    tk.Button(win, text = 'Host', command = lambda: [mode_var.set(1), win.destroy()]).pack()
+    tk.Button(win, text = 'Join', command =lambda: [mode_var.set(0), win.destroy()]).pack()
+
 def main():
     root = tk.Tk()
     root.withdraw()
+    mode = tk.IntVar(value = -1)
+    win = modeWindow(mode)
+    root.wait_window(win)
+
+
+    if mode.get():
+        SERVER_HOST = get_ip_address()
+        server_thread = threading.Thread(target=whiteboard_server.start_server, daemon = True)
+        server_thread.start()
+
+
+    else:
+        target_ip = simpledialog.askstring("Connect", "Enter Host IP:", parent=root)
+        if not target_ip: return
+
+
     u = simpledialog.askstring("Username", "Enter Name:", parent=root)
     if not u: return
     try:
@@ -290,6 +334,9 @@ def main():
         root.mainloop()
     except Exception as e:
         messagebox.showerror("Error", f"Cannot connect: {e}")
+
+    
+
 
 if __name__ == "__main__":
     main()
