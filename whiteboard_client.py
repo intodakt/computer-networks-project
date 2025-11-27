@@ -266,6 +266,7 @@ class WhiteboardApp:
         messagebox.showinfo("Error", "Disconnected from server")
         self.client_socket.close()
         self.root.destroy()
+        sys.exit(0)
     
     
 
