@@ -1,6 +1,6 @@
 # SERVER PROGRAM (whiteboard_server.py)
 # -----------------------------------------------------------------------------
-# TEAM MEMBER RESPONSIBILITY: [Member Name 1]
+# TEAM MEMBER RESPONSIBILITY: Hoonhee Jang 21011676
 #
 # DESCRIPTION:
 # This program acts as the central hub. It uses TCP Sockets to accept connections.
@@ -12,8 +12,7 @@ import socket
 import threading
 
 # --- CONFIGURATION ---
-# '0.0.0.0' tells the socket to listen on ALL network interfaces.
-# This enables connections from Localhost, Wi-Fi, and Ethernet.
+# Listen on ALL network interfaces.
 HOST = '0.0.0.0'
 PORT = 9090
 
@@ -23,37 +22,42 @@ rooms = {}
 rooms_lock = threading.Lock()
 
 def broadcast(message, sender_socket, room_code):
-    """Send a message to all clients. If it fails, just close the socket."""
     with rooms_lock:
         room = rooms.get(room_code)
         if not room:
             return
-        # We iterate over a copy so we don't crash if the list changes
-        for client in list(room["clients"].keys()):
-            if client != sender_socket:
-                try:
-                    client.send(message)
-                except:
-                    # If sending fails, close the socket. 
-                    # This will cause the client's thread to break its loop 
-                    # and trigger the 'finally' block in handle_client.
-                    client.close()
+        room_list = list(room["clients"].keys())
+
+
+    for client in room_list:
+        if client == sender_socket:
+            continue
+
+        try:
+            client.send(message)
+        except:
+            client.close()
+
 
 def send_user_list(room_code):
-    """Send USER_LIST to all clients in a specific room."""
     with rooms_lock:
         room = rooms.get(room_code)
         if not room:
             return
         users = list(room["clients"].values())
-        if not users:
-            return
-        msg = "USER_LIST," + ",".join(users) + "\n"
-        for client in room["clients"]:
-            try:
-                client.send(msg.encode('utf-8'))
-            except:
-                pass
+        recipeients  = list(room["clients"].keys())
+
+    if not users:
+        return
+    msg = "USER_LIST," + ",".join(users) + "\n"
+    encoded_msg = msg.encode('utf-8')
+
+    for client in recipeients:
+        try:
+            client.send(encoded_msg)
+        except:
+            print("Failed to send message to {client}. Disconnecting")
+            client.close()
 
 def handle_client(client_socket):
     """Handle a client connection, expects JOIN,Name,RoomCode."""
