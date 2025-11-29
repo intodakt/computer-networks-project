@@ -7,10 +7,11 @@
 # It uses Multi-threading to handle multiple clients simultaneously.
 # It maintains a "History" of all drawing commands to sync new users.
 # -----------------------------------------------------------------------------
-
+import sys
 import socket
 import threading
-
+import tkinter as tk
+from tkinter.scrolledtext import ScrolledText
 # --- CONFIGURATION ---
 # Listen on ALL network interfaces.
 HOST = '0.0.0.0'
@@ -20,6 +21,7 @@ PORT = 9090
 # 'rooms': maps room_code -> {"clients": {socket: username}, "history": [bytes]}
 rooms = {}
 rooms_lock = threading.Lock()
+log_widget = None
 
 def broadcast(message, sender_socket, room_code):
     with rooms_lock:
@@ -52,7 +54,7 @@ def send_user_list(room_code):
             client.send(encoded_msg)
 
         except:
-            print("Failed to send message to {client}. Disconnecting")
+            log("Failed to send message to {client}. Disconnecting")
             client.close()
 
 
@@ -64,7 +66,7 @@ def handle_client(client_socket):
     try:
         parts = decode_message(client_socket)
         if parts is None:
-            print("Handshake failed")
+            log("Handshake failed")
             client_socket.close()
             return
         
@@ -74,7 +76,7 @@ def handle_client(client_socket):
         load_history(client_socket, username,room_code)
 
     except Exception as e:
-        print(f"ERROR: {e}")
+        log(f"ERROR: {e}")
 
     finally:
         if room_code:
@@ -83,7 +85,7 @@ def handle_client(client_socket):
                 # Check if the client is actually in the room before removing
                 if room and client_socket in room["clients"]:
                     username_removed = room["clients"][client_socket]
-                    print(f"Disconnected: {username_removed} left room {room_code}.")
+                    log(f"Disconnected: {username_removed} left room {room_code}.")
                     
                     # 1. Remove the client
                     del room["clients"][client_socket]
@@ -131,7 +133,7 @@ def join_room(client_socket, username, room_code):
         if room_code not in rooms:
             rooms[room_code] = {"clients": {}, "history": []}
         rooms[room_code]["clients"][client_socket] = username
-    print(f"[NEW CONNECTION] {username} joined room {room_code}.")
+    log(f"New Connection: {username} joined room {room_code}.")
     send_user_list(room_code)
 
 def load_history(client_socket, username, room_code):
@@ -179,10 +181,10 @@ def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(('8.8.8.8',1))
-        print("Got IP")
+        log("Got IP")
         IP = s.getsockname()[0]
     except Exception:
-        print("Failed to get IP")
+        log("Failed to get IP")
         IP = '127.0.0.1'
     finally:
         s.close()
@@ -194,15 +196,58 @@ def start_server():
     try:
         server_socket.bind((HOST, PORT))
     except OSError:
-        print(f"Error: Port {PORT} is busy. Is the server already running?")
+        log(f"Error: Port {PORT} is busy. Is the server already running?")
         return
     server_socket.listen(5)
     lan_ip = get_ip()
-    print(f"Server listening on {HOST}:{PORT}")
-    print(f"IP: {lan_ip}")
+    log(f"Server listening on {HOST}:{PORT}")
+    log(f"IP: {lan_ip}")
     while True:
-        client_socket, addr = server_socket.accept()
-        threading.Thread(target=handle_client, args=(client_socket,)).start()
+        try:
+            client_socket, addr = server_socket.accept()
+            threading.Thread(target=handle_client, args=(client_socket,), daemon=True).start()
+        except OSError:
+            break
+
+def stop_server():
+    if window:
+        window.destroy()
+    sys.exit()
+
+def server_gui():
+    global log_widget, window
+    window = tk.Tk()
+    window.geometry("500x400")
+    control_frame = tk.Frame(window)
+    control_frame.pack(side = tk.TOP, fill = tk.X, padx = 10, pady = 5)
+    
+    window.title(f"Whiteboard Server ({get_ip()})")
+
+    button_stop = tk.Button(
+        control_frame,
+        text = "Stop Server",
+        font = ("Consolas", 10),
+        command = stop_server
+    )
+    button_stop.pack(side = tk.RIGHT)
+
+    log_widget = ScrolledText(window, state = 'disabled', font =("Consolas", 10))
+    log_widget.pack(padx = 10, pady = 10, fill = tk.BOTH, expand = True)
+
+    
+    server_thread = threading.Thread(target = start_server, daemon = True)
+    server_thread.start()
+
+    window.mainloop()
+
+def log(msg):
+    if log_widget:
+        log_widget.configure(state = "normal")
+        log_widget.insert(tk.END, msg + '\n')
+        log_widget.see(tk.END)
+        log_widget.configure(state = "disabled")
+    else:
+        print(msg)
 
 if __name__ == "__main__":
-    start_server()
+    server_gui()

@@ -20,7 +20,7 @@ import random
 
 # --- NETWORK CONFIGURATION ---
 # IMPORTANT: Change this IP to the computer running the server!
-SERVER_HOST = '127.0.0.1'
+SERVER_HOST = '192.168.35.125'
 SERVER_PORT = 9090
 
 class WhiteboardApp:
@@ -304,6 +304,14 @@ def modeWindow(mode_var):
 def main():
     root = tk.Tk()
     root.withdraw()
+    input_ip = simpledialog.askstring("IP Adress", "Enter Host IP ", parent=root)
+    
+    if input_ip:
+        SERVER_HOST = input_ip
+    else:
+        SERVER_HOST = '127.0.0.1'
+
+    
     username = simpledialog.askstring("Username", "Enter Name:", parent=root)
     if not username:
         return
