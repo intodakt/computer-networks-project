@@ -1,11 +1,12 @@
 # SERVER PROGRAM (whiteboard_server.py)
 # -----------------------------------------------------------------------------
-# TEAM MEMBER RESPONSIBILITY: Hoonhee Jang 21011676
+# Hoonhee Jang 21011676
 #
 # DESCRIPTION:
-# This program acts as the central hub. It uses TCP Sockets to accept connections.
-# It uses Multi-threading to handle multiple clients simultaneously.
-# It maintains a "History" of all drawing commands to sync new users.
+# This program initializes a multi-threaded server acting as a central hub to manage users within isolated rooms. 
+# It utilizes a UDP socket method for automatic IP discovery.
+# It maintains a complete history of drawing commands to ensure state synchronization for new clients.
+#
 # -----------------------------------------------------------------------------
 import sys
 import socket
@@ -15,7 +16,7 @@ from tkinter.scrolledtext import ScrolledText
 # --- CONFIGURATION ---
 # Listen on ALL network interfaces.
 HOST = '0.0.0.0'
-PORT = 9090
+PORT = 8000
 
 # --- GLOBAL STATE ---
 # 'rooms': maps room_code -> {"clients": {socket: username}, "history": [bytes]}

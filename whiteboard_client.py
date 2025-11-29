@@ -20,8 +20,8 @@ import random
 
 # --- NETWORK CONFIGURATION ---
 # IMPORTANT: Change this IP to the computer running the server!
-SERVER_HOST = '192.168.35.125'
-SERVER_PORT = 9090
+SERVER_HOST = '127.0.0.1'
+SERVER_PORT = 8000
 
 class WhiteboardApp:
     def __init__(self, root, client_socket, username, room_code=""):
