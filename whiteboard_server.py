@@ -86,7 +86,9 @@ def handle_client(client_socket):
                 if room and client_socket in room["clients"]:
                     username_removed = room["clients"][client_socket]
                     log(f"Disconnected: {username_removed} left room {room_code}.")      
+                    #remove clients
                     del room["clients"][client_socket]
+                    #delete room if empty
                     if not room["clients"]:
                         del rooms[room_code]
                     else:
@@ -98,6 +100,7 @@ def handle_client(client_socket):
             
             for client in recieve:
                 try:
+                    #send a new user list to all clients
                     client.send(encoded_msg)
                 except:
                     client.close()
