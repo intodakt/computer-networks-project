@@ -175,6 +175,18 @@ def load_history(client_socket, username, room_code):
                 full = f"CHAT,{username},{text}\n"
                 broadcast(full.encode('utf-8'), client_socket, room_code)
 
+def get_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8',1))
+        print("Got IP")
+        IP = s.getsockname()[0]
+    except Exception:
+        print("Failed to get IP")
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
 
 def start_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -185,7 +197,9 @@ def start_server():
         print(f"Error: Port {PORT} is busy. Is the server already running?")
         return
     server_socket.listen(5)
+    lan_ip = get_ip()
     print(f"Server listening on {HOST}:{PORT}")
+    print(f"IP: {lan_ip}")
     while True:
         client_socket, addr = server_socket.accept()
         threading.Thread(target=handle_client, args=(client_socket,)).start()
