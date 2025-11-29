@@ -58,8 +58,6 @@ def send_user_list(room_code):
             log("Failed to send message to {client}. Disconnecting")
             client.close()
 
-
-
 def handle_client(client_socket):
     #JOIN,Name,RoomCode
     username = ""
@@ -107,6 +105,7 @@ def handle_client(client_socket):
                                 
         client_socket.close()
 
+#Decodes Handshake
 def decode_message(client_socket):
     try:
         data = client_socket.recv(1024)
@@ -126,6 +125,7 @@ def decode_message(client_socket):
     except:
             return None
 
+#Client Join Manager
 def join_room(client_socket, username, room_code):
     with rooms_lock:
         if room_code not in rooms:
@@ -134,6 +134,7 @@ def join_room(client_socket, username, room_code):
     log(f"New Connection: {username} joined room {room_code}.")
     send_user_list(room_code)
 
+#History Manager
 def load_history(client_socket, username, room_code):
     with rooms_lock:
         history_cp = list(rooms[room_code]["history"])
@@ -175,6 +176,7 @@ def load_history(client_socket, username, room_code):
                 full = f"CHAT,{username},{text}\n"
                 broadcast(full.encode('utf-8'), client_socket, room_code)
 
+#Gets the server's IP
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -188,6 +190,7 @@ def get_ip():
         s.close()
     return IP
 
+#Starts the Server
 def start_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -212,6 +215,7 @@ def stop_server():
         window.destroy()
     sys.exit()
 
+#Creates the GUI for the Server Log
 def server_gui():
     global log_widget, window
     window = tk.Tk()
@@ -238,6 +242,7 @@ def server_gui():
 
     window.mainloop()
 
+#Puts the Logs into the GUI
 def log(msg):
     if log_widget:
         log_widget.configure(state = "normal")
