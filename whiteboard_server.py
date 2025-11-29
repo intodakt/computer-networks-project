@@ -27,17 +27,14 @@ def broadcast(message, sender_socket, room_code):
         if not room:
             return
         room_list = list(room["clients"].keys())
-
-
     for client in room_list:
         if client == sender_socket:
             continue
-
         try:
             client.send(message)
+
         except:
             client.close()
-
 
 def send_user_list(room_code):
     with rooms_lock:
@@ -46,15 +43,14 @@ def send_user_list(room_code):
             return
         users = list(room["clients"].values())
         recipeients  = list(room["clients"].keys())
-
     if not users:
         return
     msg = "USER_LIST," + ",".join(users) + "\n"
     encoded_msg = msg.encode('utf-8')
-
     for client in recipeients:
         try:
             client.send(encoded_msg)
+
         except:
             print("Failed to send message to {client}. Disconnecting")
             client.close()
@@ -62,7 +58,7 @@ def send_user_list(room_code):
 
 
 def handle_client(client_socket):
-    """Handle a client connection, expects JOIN,Name,RoomCode."""
+    #JOIN,Name,RoomCode
     username = ""
     room_code = None
     try:
@@ -71,14 +67,15 @@ def handle_client(client_socket):
             print("Handshake failed")
             client_socket.close()
             return
-
+        
         username = parts[1].strip()
         room_code = parts[2].strip()    
-
         join_room(client_socket, username,room_code)
         load_history(client_socket, username,room_code)
+
     except Exception as e:
-        print(f"[ERROR] {e}")
+        print(f"ERROR: {e}")
+
     finally:
         if room_code:
             with rooms_lock:
@@ -86,7 +83,7 @@ def handle_client(client_socket):
                 # Check if the client is actually in the room before removing
                 if room and client_socket in room["clients"]:
                     username_removed = room["clients"][client_socket]
-                    print(f"[DISCONNECT] {username_removed} left room {room_code}.")
+                    print(f"Disconnected: {username_removed} left room {room_code}.")
                     
                     # 1. Remove the client
                     del room["clients"][client_socket]
@@ -104,6 +101,7 @@ def handle_client(client_socket):
                         for client in room["clients"]:
                             try:
                                 client.send(msg.encode('utf-8'))
+
                             except:
                                 client.close()
                                 
@@ -143,6 +141,7 @@ def load_history(client_socket, username, room_code):
     for hist in history_cp:
         try:
             client_socket.send(hist)
+
         except:
             return
 
@@ -157,6 +156,7 @@ def load_history(client_socket, username, room_code):
             raw_msg, buffer = buffer.split(b'\n', 1)
             try:
                 message = raw_msg.decode('utf-8')
+
             except UnicodeDecodeError:
                 continue
                 
@@ -177,7 +177,6 @@ def load_history(client_socket, username, room_code):
 
 
 def start_server():
-    """Initialize the socket and start the main acceptance loop."""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
@@ -186,7 +185,7 @@ def start_server():
         print(f"Error: Port {PORT} is busy. Is the server already running?")
         return
     server_socket.listen(5)
-    print(f"[*] Server listening on {HOST}:{PORT}")
+    print(f"Server listening on {HOST}:{PORT}")
     while True:
         client_socket, addr = server_socket.accept()
         threading.Thread(target=handle_client, args=(client_socket,)).start()
