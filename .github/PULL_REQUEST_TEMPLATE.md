@@ -1,8 +1,3 @@
-To make this render correctly in a GitHub Pull Request, you need to use GitHub Flavored Markdown.
-
-Here is the corrected code. You can copy and paste this directly into your PR description or save it as a template.
-Markdown
-
 ## Description
 
 Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.
