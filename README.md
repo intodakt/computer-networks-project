@@ -25,20 +25,23 @@ A multi‑room collaborative whiteboard built with Python sockets and Tkinter.
 ```bash
 cd computer-networks-project
 python whiteboard_server.py
-
+```
 OR
-
+```bash
+cd computer-networks-project
 make server
 ```
+
 The server GUI will display the LAN IP and logs.
 
 ## Running the Client
 ```bash
 cd computer-networks-project
 python whiteboard_client.py
-
+```
 OR
-
+```bash
+cd computer-networks-project
 make client
 ```
 - Enter the server IP (default `127.0.0.1`).
