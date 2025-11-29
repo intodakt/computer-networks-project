@@ -278,28 +278,6 @@ class WhiteboardApp:
         self.client_socket.close()
         self.root.destroy()
 
-def get_ip_address(): #Use UDP to quickly get the host's ip adress
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect('8.8.8.8', 80)
-            ip_adress = s.getsockname()[0]
-        except Exception:
-            ip_adress = '127.0.0.1'
-        finally:
-            s.close()
-
-        return ip_adress
-
-def modeWindow(mode_var):
-    win = tk.Toplevel()
-    win.title('Choose Mode')
-    message = 'Host or Join?'
-    tk.Label(win, text = message).pack()
-
-    tk.Button(win, text = 'Host', command = lambda: [mode_var.set(1), win.destroy()]).pack()
-    tk.Button(win, text = 'Join', command =lambda: [mode_var.set(0), win.destroy()]).pack()
-    return win
-
 def main():
     root = tk.Tk()
     root.withdraw()
