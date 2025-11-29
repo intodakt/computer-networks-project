@@ -83,30 +83,24 @@ def handle_client(client_socket):
         if room_code:
             with rooms_lock:
                 room = rooms.get(room_code)
-                # Check if the client is actually in the room before removing
                 if room and client_socket in room["clients"]:
                     username_removed = room["clients"][client_socket]
-                    log(f"Disconnected: {username_removed} left room {room_code}.")
-                    
-                    # 1. Remove the client
+                    log(f"Disconnected: {username_removed} left room {room_code}.")      
                     del room["clients"][client_socket]
-                    
-                    # 2. If room is empty, delete the room
                     if not room["clients"]:
                         del rooms[room_code]
                     else:
-                        # 3. CRITICAL: Broadcast the new User List to remaining people
-                        # We must do this INSIDE the lock so everyone gets the update immediately
                         users = list(room["clients"].values())
-                        msg = "USER_LIST," + ",".join(users) + "\n"
-                        
-                        # Send to all remaining clients
-                        for client in room["clients"]:
-                            try:
-                                client.send(msg.encode('utf-8'))
-
-                            except:
-                                client.close()
+                        recieve = list(room["clients"].keys())
+            if recieve:
+                msg = "USER_LIST," + ",".join(users) + "\n"
+                encoded_msg = msg.encode('utf-8')     
+            
+            for client in recieve:
+                try:
+                    client.send(encoded_msg)
+                except:
+                    client.close()
                                 
         client_socket.close()
 

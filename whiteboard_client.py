@@ -19,7 +19,6 @@ import random
 
 
 # --- NETWORK CONFIGURATION ---
-# IMPORTANT: Change this IP to the computer running the server!
 SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 8000
 
