@@ -1,196 +1,256 @@
-# -----------------------------------------------------------------------------
 # SERVER PROGRAM (whiteboard_server.py)
 # -----------------------------------------------------------------------------
-# TEAM MEMBER RESPONSIBILITY: [Member Name 1]
+# Hoonhee Jang 21011676
 #
 # DESCRIPTION:
-# This program acts as the central hub. It uses TCP Sockets to accept connections.
-# It uses Multi-threading to handle multiple clients simultaneously.
-# It maintains a "History" of all drawing commands to sync new users.
+# This program initializes a multi-threaded server acting as a central hub to manage users within isolated rooms. 
+# It utilizes a UDP socket method for automatic IP discovery.
+# It maintains a complete history of drawing commands to ensure state synchronization for new clients.
+#
 # -----------------------------------------------------------------------------
-
+import sys
 import socket
 import threading
-
+import tkinter as tk
+from tkinter.scrolledtext import ScrolledText
 # --- CONFIGURATION ---
-# '0.0.0.0' tells the socket to listen on ALL network interfaces.
-# This enables connections from Localhost, Wi-Fi, and Ethernet.
+# Listen on ALL network interfaces.
 HOST = '0.0.0.0'
-PORT = 9090
+PORT = 8000
 
 # --- GLOBAL STATE ---
-# 'clients': A dictionary mapping {socket_object: "username_string"}
-clients = {}
+# 'rooms': maps room_code -> {"clients": {socket: username}, "history": [bytes]}
+rooms = {}
+rooms_lock = threading.Lock()
+log_widget = None
 
-# 'drawing_history': A list of bytes.
-# We store every "DRAW", "RECT", "LINE" command here.
-# When a new person joins, we replay this list so their canvas looks like ours.
-drawing_history = []
+def broadcast(message, sender_socket, room_code):
+    with rooms_lock:
+        room = rooms.get(room_code)
+        if not room:
+            return
+        room_list = list(room["clients"].keys())
+    for client in room_list:
+        if client == sender_socket:
+            continue
+        try:
+            client.send(message)
 
-# 'clients_lock': A Thread Lock.
-# Since multiple threads (clients) run at the same time, two threads might try
-# to modify the 'clients' list simultaneously, causing a crash.
-# The lock forces threads to wait their turn.
-clients_lock = threading.Lock()
+        except:
+            client.close()
 
-def broadcast(message, sender_socket):
-    """
-    Sends a raw message to ALL connected clients EXCEPT the sender.
-    This is the core 'Collaborative' logic.
-    """
-    disconnected_clients = []
-    
-    # 1. Acquire lock to safely read the shared 'clients' dictionary
-    with clients_lock:
-        for client_sock in clients.keys():
-            # Don't send the drawing back to the person who drew it
-            # (They already drew it locally on their screen)
-            if client_sock != sender_socket:
-                try:
-                    client_sock.send(message)
-                except:
-                    # If sending fails, the client probably disconnected abruptly.
-                    client_sock.close()
-                    disconnected_clients.append(client_sock)
+def send_user_list(room_code):
+    with rooms_lock:
+        room = rooms.get(room_code)
+        if not room:
+            return
+        users = list(room["clients"].values())
+        recipeients  = list(room["clients"].keys())
+    if not users:
+        return
+    msg = "USER_LIST," + ",".join(users) + "\n"
+    encoded_msg = msg.encode('utf-8')
+    for client in recipeients:
+        try:
+            client.send(encoded_msg)
 
-    # 2. Clean up any dead connections found during the broadcast
-    if disconnected_clients:
-        with clients_lock:
-            for client in disconnected_clients:
-                if client in clients:
-                    clients.pop(client)
-        # Update everyone's user list sidebar
-        send_user_list()
-
-def send_user_list():
-    """
-    Generates a comma-separated list of usernames and sends it to everyone.
-    Format: "USER_LIST,Alice,Bob,Charlie\n"
-    """
-    with clients_lock:
-        if not clients: return
-        # Join all usernames with commas
-        user_list_str = "USER_LIST," + ",".join(clients.values()) + "\n"
-        
-        # Send to ALL clients (including the sender)
-        for client in clients.keys():
-            try:
-                client.send(user_list_str.encode('utf-8'))
-            except:
-                pass
+        except:
+            log("Failed to send message to {client}. Disconnecting")
+            client.close()
 
 def handle_client(client_socket):
-    """
-    The MAIN LOOP for a single client.
-    Run inside a separate thread.
-    """
+    #JOIN,Name,RoomCode
     username = ""
+    room_code = None
     try:
-        # --- STEP 1: HANDSHAKE ---
-        # The first message MUST be "JOIN,Name"
-        join_msg_bytes = client_socket.recv(1024)
-        if not join_msg_bytes: return
-        
-        join_msg = join_msg_bytes.decode('utf-8')
-        
-        if join_msg.startswith("JOIN,"):
-            username = join_msg.split(',', 1)[1].strip()
-            
-            # Add to global list safely
-            with clients_lock:
-                clients[client_socket] = username
-            
-            print(f"[NEW CONNECTION] {username} connected.")
-            send_user_list()
-
-            # --- CRITICAL FEATURE: STATE SYNCHRONIZATION ---
-            # Replay the entire drawing history for this NEW user only.
-            # This ensures they see what was drawn before they arrived.
-            for historical_command in drawing_history:
-                try:
-                    client_socket.send(historical_command)
-                except:
-                    break
-        else:
-            # If protocol is wrong, disconnect them
+        parts = decode_message(client_socket)
+        if parts is None:
+            log("Handshake failed")
             client_socket.close()
             return
-
-        # --- STEP 2: LISTENING LOOP ---
-        buffer = ""
-        while True:
-            try:
-                # Receive data (blocking call - waits for data)
-                data_bytes = client_socket.recv(1024)
-                if not data_bytes: break # Connection closed
-                
-                buffer += data_bytes.decode('utf-8')
-                
-                # TCP FRAGMENTATION HANDLER:
-                # Messages might arrive bunched together ("DRAW...DRAW...").
-                # We split them by newline '\n' to process one by one.
-                while '\n' in buffer:
-                    message, buffer = buffer.split('\n', 1)
-                    message_with_newline = message + '\n'
-                    encoded_msg = message_with_newline.encode('utf-8')
-                    
-                    # 1. Drawing Commands -> Save to History & Broadcast
-                    if message.startswith(("DRAW,", "LINE,", "RECT,", "CIRCLE,", "TRI,")):
-                        drawing_history.append(encoded_msg)
-                        broadcast(encoded_msg, client_socket)
-                    
-                    # 2. Clear Command -> Wipe History & Broadcast
-                    elif message.startswith("CLEAR"):
-                        drawing_history.clear()
-                        broadcast(encoded_msg, client_socket)
-                    
-                    # 3. Chat -> Just Broadcast (Don't save chat to history)
-                    elif message.startswith("CHAT,"):
-                        # Protocol: CHAT,SenderName,Message
-                        text = message.split(',', 1)[1]
-                        full_chat = f"CHAT,{username},{text}\n"
-                        broadcast(full_chat.encode('utf-8'), client_socket)
-
-            except ConnectionResetError:
-                break # Client force closed
+        
+        username = parts[1].strip()
+        room_code = parts[2].strip()    
+        join_room(client_socket, username,room_code)
+        load_history(client_socket, username,room_code)
 
     except Exception as e:
-        print(f"[ERROR] {e}")
-    
-    # --- STEP 3: CLEANUP ---
-    # Remove client from list and notify others
-    with clients_lock:
-        if client_socket in clients:
-            print(f"[DISCONNECT] {clients[client_socket]} left.")
-            clients.pop(client_socket)
-            send_user_list()
-    client_socket.close()
+        log(f"ERROR: {e}")
 
+    finally:
+        if room_code:
+            with rooms_lock:
+                room = rooms.get(room_code)
+                if room and client_socket in room["clients"]:
+                    username_removed = room["clients"][client_socket]
+                    log(f"Disconnected: {username_removed} left room {room_code}.")      
+                    #remove clients
+                    del room["clients"][client_socket]
+                    #delete room if empty
+                    if not room["clients"]:
+                        del rooms[room_code]
+                    else:
+                        users = list(room["clients"].values())
+                        recieve = list(room["clients"].keys())
+            if recieve:
+                msg = "USER_LIST," + ",".join(users) + "\n"
+                encoded_msg = msg.encode('utf-8')     
+            
+            for client in recieve:
+                try:
+                    #send a new user list to all clients
+                    client.send(encoded_msg)
+                except:
+                    client.close()
+                                
+        client_socket.close()
+
+#Decodes Handshake
+def decode_message(client_socket):
+    try:
+        data = client_socket.recv(1024)
+        if not data:
+            return None
+        
+        join_msg = data.decode('utf-8')
+        if not join_msg.startswith("JOIN,"):
+            return None
+        
+        parts = join_msg.split(',' , 2)
+        if len(parts) < 3:
+            client_socket.close()
+            return None
+        
+        return parts
+    except:
+            return None
+
+#Client Join Manager
+def join_room(client_socket, username, room_code):
+    with rooms_lock:
+        if room_code not in rooms:
+            rooms[room_code] = {"clients": {}, "history": []}
+        rooms[room_code]["clients"][client_socket] = username
+    log(f"New Connection: {username} joined room {room_code}.")
+    send_user_list(room_code)
+
+#History Manager
+def load_history(client_socket, username, room_code):
+    with rooms_lock:
+        history_cp = list(rooms[room_code]["history"])
+
+    for hist in history_cp:
+        try:
+            client_socket.send(hist)
+
+        except:
+            return
+
+    buffer = b""
+    while True:
+        data = client_socket.recv(1024)
+        if not data:
+            break
+
+        buffer += data
+        while b'\n' in buffer:
+            raw_msg, buffer = buffer.split(b'\n', 1)
+            try:
+                message = raw_msg.decode('utf-8')
+
+            except UnicodeDecodeError:
+                continue
+                
+            msg_nl = message + '\n'
+            encoded = msg_nl.encode('utf-8')
+            if message.startswith(("DRAW,", "LINE,", "RECT,", "CIRCLE,", "TRI,")):
+                with rooms_lock:
+                    rooms[room_code]["history"].append(encoded)
+                broadcast(encoded, client_socket, room_code)
+            elif message.startswith("CLEAR"):
+                with rooms_lock:
+                    rooms[room_code]["history"].clear()
+                broadcast(encoded, client_socket, room_code)
+            elif message.startswith("CHAT,"):
+                _, _, text = message.partition(',')
+                full = f"CHAT,{username},{text}\n"
+                broadcast(full.encode('utf-8'), client_socket, room_code)
+
+#Gets the server's IP
+def get_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8',1))
+        log("Got IP")
+        IP = s.getsockname()[0]
+    except Exception:
+        log("Failed to get IP")
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+
+#Starts the Server
 def start_server():
-    """Initializes the socket and starts the main acceptance loop."""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
-    # SO_REUSEADDR allows us to restart the server immediately without waiting for timeout
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    
     try:
         server_socket.bind((HOST, PORT))
-    except OSError as e:
-        print(f"Error: Port {PORT} is busy. Is the server already running?")
+    except OSError:
+        log(f"Error: Port {PORT} is busy. Is the server already running?")
         return
-
-    server_socket.listen(5) # Backlog of 5 connections
-    print(f"[*] Server listening on {HOST}:{PORT}")
-    print("    (Share your IP address with teammates to connect)")
-    
+    server_socket.listen(5)
+    lan_ip = get_ip()
+    log(f"Server listening on {HOST}:{PORT}")
+    log(f"IP: {lan_ip}")
     while True:
-        # Wait for a new connection
-        client_socket, addr = server_socket.accept()
-        
-        # Create a NEW THREAD for this client
-        # This allows the main loop to go back and wait for the NEXT person
-        thread = threading.Thread(target=handle_client, args=(client_socket,))
-        thread.start()
+        try:
+            client_socket, addr = server_socket.accept()
+            threading.Thread(target=handle_client, args=(client_socket,), daemon=True).start()
+        except OSError:
+            break
+
+def stop_server():
+    if window:
+        window.destroy()
+    sys.exit()
+
+#Creates the GUI for the Server Log
+def server_gui():
+    global log_widget, window
+    window = tk.Tk()
+    window.geometry("500x400")
+    control_frame = tk.Frame(window)
+    control_frame.pack(side = tk.TOP, fill = tk.X, padx = 10, pady = 5)
+    
+    window.title(f"Whiteboard Server ({get_ip()})")
+
+    button_stop = tk.Button(
+        control_frame,
+        text = "Stop Server",
+        font = ("Consolas", 10),
+        command = stop_server
+    )
+    button_stop.pack(side = tk.RIGHT)
+
+    log_widget = ScrolledText(window, state = 'disabled', font =("Consolas", 10))
+    log_widget.pack(padx = 10, pady = 10, fill = tk.BOTH, expand = True)
+
+    
+    server_thread = threading.Thread(target = start_server, daemon = True)
+    server_thread.start()
+
+    window.mainloop()
+
+#Puts the Logs into the GUI
+def log(msg):
+    if log_widget:
+        log_widget.configure(state = "normal")
+        log_widget.insert(tk.END, msg + '\n')
+        log_widget.see(tk.END)
+        log_widget.configure(state = "disabled")
+    else:
+        print(msg)
 
 if __name__ == "__main__":
-    start_server()
+    server_gui()
