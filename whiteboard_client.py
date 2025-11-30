@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # CLIENT PROGRAM (whiteboard_client.py)
 # -----------------------------------------------------------------------------
-# TEAM MEMBER RESPONSIBILITY: [Member Name 2] & [Member Name 4]
+# TEAM MEMBER RESPONSIBILITY: Erkinov Shakhzodjon 23013094 & [Member Name 4]
 #
 # DESCRIPTION:
 # This program handles the GUI (Tkinter) and Network logic.
@@ -71,9 +71,6 @@ class WhiteboardApp:
         self.main_pane.add(self.sidebar)
 
         # === UI SANDWICH LAYOUT ===
-        # 1. Pack fixed items to TOP
-        # 2. Pack Input Field to BOTTOM
-        # 3. Pack History to FILL the middle
 
         # [TOP] Tools Section
         self.tools_frame = tk.LabelFrame(self.sidebar, text="Tools", bg='#f0f0f0', padx=2, pady=2)
