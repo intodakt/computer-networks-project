@@ -5,7 +5,7 @@ A multi‑room collaborative whiteboard built with Python sockets and Tkinter.
 ## Team Members
 
 - Hoonhee Jang - 21011676
-- [Name] - [ID]
+- Erkinov Shakhzodjon - 23013094
 - [Name] - [ID]
 - [Name] - [ID]
 
