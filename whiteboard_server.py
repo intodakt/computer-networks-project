@@ -14,7 +14,6 @@ import threading
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 # --- CONFIGURATION ---
-# Listen on ALL network interfaces.
 HOST = '0.0.0.0'
 PORT = 8000
 
