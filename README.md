@@ -6,7 +6,7 @@ A multi‑room collaborative whiteboard built with Python sockets and Tkinter.
 
 - Hoonhee Jang - 21011676
 - Erkinov Shakhzodjon - 23013094
-- [Name] - [ID]
+- Zubaydullayev Asliddin - 25013371
 - [Name] - [ID]
 
 
