@@ -19,6 +19,8 @@ Synchronization: Implemented thread locks (clients_lock, history_lock) to preven
 
 Connection Management: Handled the client handshake process, including the initial JOIN protocol and robust disconnect handling.
 
+History Sync: Implemented the server-side history storage and the client-side logic to receive and replay the full drawing history upon joining.
+
 ### Erkinov Shakhzodjon - 23013094
 Role: Protocol Designer & Network Logic
 
