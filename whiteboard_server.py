@@ -13,11 +13,10 @@ import socket
 import threading
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
-# --- CONFIGURATION ---
+
 HOST = '0.0.0.0'
 PORT = 8000
 
-# --- GLOBAL STATE ---
 # 'rooms': maps room_code -> {"clients": {socket: username}, "history": [bytes]}
 rooms = {}
 rooms_lock = threading.Lock()
@@ -38,6 +37,7 @@ def broadcast(message, sender_socket, room_code):
         except:
             client.close()
 
+#Updates the User List
 def send_user_list(room_code):
     with rooms_lock:
         room = rooms.get(room_code)
@@ -53,7 +53,7 @@ def send_user_list(room_code):
         try:
             client.send(encoded_msg)
 
-        except:
+        except: #If failed to connect to client, close socket
             log("Failed to send message to {client}. Disconnecting")
             client.close()
 
@@ -112,10 +112,10 @@ def decode_message(client_socket):
             return None
         
         join_msg = data.decode('utf-8')
-        if not join_msg.startswith("JOIN,"):
+        if not join_msg.startswith("JOIN,"): #Checks for protocol JOIN
             return None
         
-        parts = join_msg.split(',' , 2)
+        parts = join_msg.split(',' , 2)#Checks for fields
         if len(parts) < 3:
             client_socket.close()
             return None
