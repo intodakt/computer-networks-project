@@ -1,6 +1,6 @@
 # SERVER PROGRAM (whiteboard_server.py)
 # -----------------------------------------------------------------------------
-# Hoonhee Jang 21011676
+# Hoonhee Jang 21011676 & Ulmasov Muzaffar - 23013095
 #
 # DESCRIPTION:
 # This program initializes a multi-threaded server acting as a central hub to manage users within isolated rooms. 
