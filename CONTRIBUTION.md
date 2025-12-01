@@ -7,7 +7,7 @@
 - Hoonhee Jang - 21011676
 - Erkinov Shakhzodjon - 23013094
 - Zubaydullayev Asliddin - 25013371
-- Name - ID
+- Ulmasov Muzaffar - 23013095
 ## Summary of Contributions
 
 ### Hoonhee Jang - 21011676
@@ -38,7 +38,7 @@ Drawing Tools: Implemented the drawing logic for the Brush and Eraser tools, inc
 
 Shape Tools: Developed the logic for shape previews and final drawing for Lines, Rectangles, Circles, and Triangles.
 
-### [Member 4 Name]
+### Ulmasov Muzaffar - 23013095
 
 Role: Feature Developer & User Experience
 
