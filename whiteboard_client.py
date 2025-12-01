@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # CLIENT PROGRAM (whiteboard_client.py)
 # -----------------------------------------------------------------------------
-# TEAM MEMBER RESPONSIBILITY: Erkinov Shakhzodjon 23013094 & Zubaydullayev Asliddin - 25013371 & 
+# TEAM MEMBER RESPONSIBILITY: Erkinov Shakhzodjon 23013094 & Zubaydullayev Asliddin - 25013371 & Ulmasov Muzaffar - 23013095
 #
 # DESCRIPTION:
 # This program handles the GUI (Tkinter) and Network logic.
